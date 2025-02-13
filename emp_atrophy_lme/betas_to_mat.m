@@ -2,7 +2,7 @@
 data = readtable('betas.csv');
 
 % Extract the numeric data (excluding the first column)
-betas = (data(:, 2:end));
+betas = data(:, 2:end);
 
 % Save the numeric data to a .mat file
 save('c:/Users/gabri/ga-cha/SIR_utils/emp_atrophy_lme/betas.mat', 'betas');
