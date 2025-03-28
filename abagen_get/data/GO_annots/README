@@ -1,0 +1,23 @@
+Select all abagen gene products with GO UniProt annotations
+
+Lysosome/UPS gene selection
+AmiGO2; taxon > Homo sapiens, type > protein, evidence > experimental evidence
+Ubiquitin: (MF) > ubiquitin protein ligase activity
+Lysosome: (CC) > lysosome
+Lysosome: (MF) > autophagy
+Lysosome: (BP) > Lysosomal transport
+
+Total:
+201 lysosomal genes w/ AHBA probe
+145 UPS genes with w/ AHBA probe
+
+
+
+________________________________________
+
+Strict lysosome/UPS gene selection
+AmiGO2; taxon > Homo sapiens, type > protein, evidence > experimental evidence
+Lysosome (133): Annotation > lysosome
+Ubiquitin (128): Annotation > ubiquitin protein ligase activity
+
+direct assay evidence used in manual assertion
