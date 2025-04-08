@@ -5,7 +5,7 @@ data = readtable('./results/betas.csv');
 emp_atr = data(:, 2:end);
 
 % Save the numeric data to a .mat file
-% save('c:/Users/gabri/ga-cha/SIR_utils/emp_atrophy_lme/betas.mat', 'betas');
+save('./results/emp_atr.mat', 'emp_atr');
 
 % Create a new table with the same column names as emp_atr and additional columns
 % new_table = cell2table(C, 'VariableNames', [{'risk gene', 'clearance gene'}, emp_atr.Properties.VariableNames]);
