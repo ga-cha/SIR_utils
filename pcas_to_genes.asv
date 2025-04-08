@@ -1,8 +1,0 @@
-% given PCs of interest and pca matrix, returns top contributing genes
-
-
-% something like take every gene and correlate with PC
-% then take like, top 100 or above some arbitrary corr threshold
-corrs = corr(table2array(genes), table2array(gene_pcs(:,3)));
-[max_corrs, max_i] = maxk(corrs, 100);
-corr_genes = genes.Properties.VariableNames{max_i};
