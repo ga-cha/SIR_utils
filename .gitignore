@@ -1,2 +1,9 @@
+
+/data-ahba/
+/emp_atrophy_lme/results/
+/emp_atrophy_lme/voxelwise_lme/results/
+/enrichment/data/
+/gen_null/rewired_null/results/
 /gen_null/spatial_null/voxelwise_brainsmash/results/
 /gen_null/spatial_null/voxelwise_brainsmash/data/
+/vis_nii/results/
