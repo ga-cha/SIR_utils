@@ -1,0 +1,30 @@
+[project]
+name = "sir-utils"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "abagen",
+    "brainsmash>=0.11.0",
+    "brainspace>=0.1.22",
+    "dask>=2025.12.0",
+    "importlib>=1.0.4",
+    "ipykernel>=7.1.0",
+    "ipynb>=0.5.1",
+    "matplotlib>=3.10.7",
+    "matplotlib-venn>=1.1.2",
+    "mygene>=3.2.2",
+    "neuromaps>=0.0.5",
+    "nilearn>=0.12.1",
+    "pandas>=2.3.3",
+    "pyarrow>=22.0.0",
+    "scipy>=1.16.3",
+    "seaborn>=0.13.2",
+    "setuptools>=80.9.0",
+    "statsmodels>=0.14.6",
+    "tqdm>=4.67.1",
+]
+
+[tool.uv.sources]
+abagen = { git = "https://github.com/rmarkello/abagen.git" }
