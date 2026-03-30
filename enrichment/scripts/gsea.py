@@ -44,7 +44,7 @@ def run_gsea(gene_list, gene_set, n_permutations=1000):
 def run_gsea_df(
     weights_df: pd.DataFrame,
     gene_labels: pd.DataFrame,
-    n_permutations: int = 5000,
+    n_permutations: int = 1000,
     adjust: str = "fdr_bh",
     seed: int = None,
 ):

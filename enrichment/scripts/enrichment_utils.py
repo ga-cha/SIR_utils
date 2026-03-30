@@ -35,8 +35,13 @@ def shuffle_gene_weights(weights, n=100):
     """
     Make null model by randomizing gene weights / ranks
     """
+    # reshape to 2D if weights is a Series
+    weights = weights.values if hasattr(weights, "values") else np.asarray(weights)
+    if weights.ndim == 1:
+        weights = weights[:, np.newaxis]
+
     n_components = weights.shape[1]
-    null_weights = np.repeat(weights.values[:, :n_components, np.newaxis], n, axis=2)
+    null_weights = np.repeat(weights[:, :n_components, np.newaxis], n, axis=2)
     # null_weights = np.take_along_axis(null_weights, np.random.randn(*null_weights.shape).argsort(axis=0), axis=0)
     for c in range(n_components):
         for i in range(n):
@@ -72,11 +77,25 @@ def compute_enrichments(
     """
     Compute scores for each gene label, either mean, or median rank
     """
-    n_components = weights.shape[1]
-    axis_names = list(weights.columns)
-    gene_masks, gene_counts = match_genes(gene_labels, weights)
+    weights_array = weights.values if hasattr(weights, "values") else np.asarray(weights)
+    if weights_array.ndim == 1:
+        weights_array = weights_array[:, np.newaxis]
 
-    weights = weights.copy().values
+    n_components = weights_array.shape[1]
+    axis_names = (
+        list(weights.columns)
+        if hasattr(weights, "columns")
+        else [f"C{i + 1}" for i in range(n_components)]
+    )
+    gene_index = (
+        weights.index
+        if hasattr(weights, "index")
+        else pd.RangeIndex(start=0, stop=weights_array.shape[0], step=1)
+    )
+    weights_df = pd.DataFrame(weights_array, index=gene_index, columns=axis_names)
+    gene_masks, gene_counts = match_genes(gene_labels, weights_df)
+
+    weights = weights_array.copy()
     nulls = null_weights.copy()
     # Take absolute values of standardized weights
     if norm:

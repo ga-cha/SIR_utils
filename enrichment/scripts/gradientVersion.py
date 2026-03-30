@@ -149,37 +149,6 @@ class gradientVersion:
 
         return scores.join(labels)
 
-    def score_in_dk(
-        self,
-        clean=True,
-        hcp_img_path="../data/parcellations/lh.HCPMMP1.annot",
-        dk_img_path="../data/parcellations/lh.aparc.annot",
-    ):
-        """
-        Project HCP scores to DK parcellation
-        """
-        hcp_img = annot_to_gifti(hcp_img_path)
-        dk_img = annot_to_gifti(dk_img_path)
-
-        scores_dk = np.zeros((34, 3))
-        for i in range(3):
-            # Re-index gradient null values with NA
-            c_hcp = self.scores[i].reindex(range(1, 181)).values
-            # Use HCP parcellation image to project HCP data to fsaverage
-            c_fsaverage = parcels_to_vertices(c_hcp, hcp_img)
-            # Use DK parcellation image to project fsaverage data into DK
-            c_dk = vertices_to_parcels(c_fsaverage, dk_img)
-            # Add to outputs
-            scores_dk[:, i] = c_dk
-
-        # Convert to dataframe
-        scores_dk = pd.DataFrame.from_records(scores_dk, index=list(range(1, 35)))
-
-        if clean:
-            scores = self.clean_scores(scores=scores_dk)
-
-        return scores
-
     def fit_weights(self, sort=False, n_components=3):
         """
         Get gene weights by correlating expression with scores
