@@ -2,7 +2,8 @@
 #  Helper functions for processing brainspan data
 
 import numpy as np, pandas as pd
-from processing import *
+
+# from processing import *
 
 # import statsmodels.api as sm
 from statsmodels.gam.api import GLMGam, BSplines
@@ -16,7 +17,8 @@ def get_brainspan_curves_by_gene(
     genes=None,
     return_points=False,
     alpha=0.5,
-    save_path="../outputs/brainspan_curves.csv",
+    save_path="../results/brainspan_curves.csv",
+    regions=None,
 ):
     """
     1. Get BrainSpan data and match regions to HCP parcellation
@@ -30,12 +32,21 @@ def get_brainspan_curves_by_gene(
     bs_exp, bs_col, bs_row = get_brainspan()
     hcp_bs_mapping = get_hcp_bs_mapping_v2()
     bs_clean = clean_brainspan(bs_exp, bs_col, bs_row, hcp_bs_mapping)
+    genes_to_fit = np.intersect1d(bs_clean.columns, genes)
     # 2
     bs_continuous = make_continuous(bs_clean, norm_samples=True)
+    if regions is not None:
+        bs_continuous = bs_continuous.query("region in @regions")
     # 3
-    genes_to_fit = np.intersect1d(bs_clean.columns, genes)
-    models = fit_gam_models(bs_continuous, genes_to_fit, alpha=alpha)
-    curves, points = predict_gam_curves(models, bs_continuous, genes_to_fit)
+    if regions is not None:
+        models = fit_gam_models(
+            bs_continuous, genes_to_fit, by_region=True, alpha=alpha
+        )
+    else:
+        models = fit_gam_models(bs_continuous, genes_to_fit, alpha=alpha)
+    curves, points = predict_gam_curves(
+        models, bs_continuous, genes_to_fit, regions=regions
+    )
 
     if save_path is not None:
         curves.to_csv(save_path)
@@ -47,12 +58,28 @@ def get_brainspan_curves_by_gene(
         return curves
 
 
+def get_brainspan_curves_by_component(
+    components=None,
+):
+    """
+    Get BrainSpan curves for all genes in selected components
+    """
+    bs_curves = get_brainspan_curves_by_gene(return_points=False)
+    if components is not None:
+        bs_curves = bs_curves.query("component in @components")
+    return bs_curves
+
+
 def get_weight_quantiles(weights, q=10):
     quantiles = (
         weights.melt(ignore_index=False, var_name="C", value_name="C_score")
         .assign(
-            C_quantile=lambda x: x.groupby("C")["C_score"].apply(
-                lambda y: pd.qcut(y, q=q, labels=range(q))
+            C_quantile=lambda x: x.groupby("C")["C_score"].transform(
+                lambda y: pd.qcut(
+                    y.rank(method="first"),
+                    q=q,
+                    labels=range(q),
+                )
             )
         )
         .rename_axis("gene")
@@ -62,7 +89,7 @@ def get_weight_quantiles(weights, q=10):
 
 
 def get_quantile_curves(weights, curves, q=10):
-    quantiles = get_weight_quantiles(weights)
+    quantiles = get_weight_quantiles(weights, q=q)
 
     quantile_curves = (
         quantiles.join(curves.set_index("gene"), on="gene")
@@ -74,7 +101,7 @@ def get_quantile_curves(weights, curves, q=10):
     return quantile_curves
 
 
-def get_brainspan(bs_dir="../data/brainspan-data/gene_matrix_rnaseq/"):
+def get_brainspan(bs_dir="../data/brainspan-data/genes_matrix_rnaseq/"):
     """
     Read in brainspan data as expression matrix, column labels, and row labels
     """
@@ -153,7 +180,13 @@ def make_continuous(bs_clean, log=True, norm_samples=True):
 
 
 def fit_gam_models(
-    bs_continuous, genes_to_fit, age_var="age_log10", df=12, degree=3, alpha=1.0
+    bs_continuous,
+    genes_to_fit,
+    by_region=False,
+    age_var="age_log10",
+    df=12,
+    degree=3,
+    alpha=1.0,
 ):
     """
     Fit GAM for each gene using continuous age
@@ -166,7 +199,9 @@ def fit_gam_models(
     for gene in genes_to_fit:
         # models[gene] = GLMGam(endog=bs_continuous[gene], exog=bs_continuous.loc[:, ['gender', 'region']],
         #                                 smoother=basis_splines, alpha=alpha).fit()
-        formula = f'Q("{gene}") ~ {age_var} + gender + region'
+        formula = f'Q("{gene}") ~ {age_var} + gender'
+        if by_region:
+            formula += " + region"
         models[gene] = GLMGam.from_formula(
             formula=formula, data=bs_continuous, smoother=basis_splines, alpha=alpha
         ).fit()
@@ -176,48 +211,69 @@ def fit_gam_models(
 
 
 def predict_gam_curves(
-    models, bs_continuous, genes_to_fit, region="DFC", age_var="age_log10", n_preds=100
+    models,
+    bs_continuous,
+    genes_to_fit,
+    regions=None,
+    age_var="age_log10",
+    n_preds=100,
 ):
     """
-    Predict GAM curves for a single region and both genders
+    Predict GAM curves for a single region and both genders.
+
+    Observed values are collapsed to the median expression per participant
+    across input regions before plotting.
     """
-    # Clean up input data
+    # if regions is not None:
+    #     bs_continuous = bs_continuous.query("region in @regions")
     df_data = (
-        bs_continuous.drop("donor_id", axis=1)
-        .loc[lambda x: x["region"] == region, [age_var, "gender"] + list(genes_to_fit)]
+        bs_continuous.loc[:, ["donor_id", age_var, "gender"] + list(genes_to_fit)]
+        .groupby(["donor_id", age_var, "gender"], observed=True)
+        .median(numeric_only=True)
+        .reset_index()
+        .drop("donor_id", axis=1)
         .melt(id_vars=[age_var, "gender"], var_name="gene", value_name="true")
         #  .assign(age = lambda x: (10**x[age_var]-40*7)/365)
     )
 
     # Vector of ages to predict at
     ages_to_predict = np.linspace(min(df_data[age_var]), max(df_data[age_var]), n_preds)
-    # Dataframe to predict (repeat eachand F)
-    df_preds = pd.DataFrame(
-        {
-            age_var: np.repeat(ages_to_predict, 2),
-            "gender": ["F", "M"] * n_preds,
-            "region": region,
-        }
-    )
+    # Build prediction grid robustly using Cartesian product so lists of
+    # regions produce matching-length arrays.
+    genders = ["F", "M"]
+    if regions is None:
+        mi = pd.MultiIndex.from_product(
+            [ages_to_predict, genders], names=[age_var, "gender"]
+        )
+        df_preds = mi.to_frame(index=False)
+    else:
+        regions_list = [regions] if isinstance(regions, str) else list(regions)
+        mi = pd.MultiIndex.from_product(
+            [ages_to_predict, genders, regions_list],
+            names=[age_var, "gender", "region"],
+        )
+        df_preds = mi.to_frame(index=False)
 
     # Make predictions for each gene
     preds = {
         gene: models[gene].predict(df_preds, exog_smooth=df_preds[age_var])
         for gene in genes_to_fit
     }
-    # Combine genes into df
+    # Combine genes into df, preserving `region` if present
+    id_vars = [age_var, "gender"] + (["region"] if "region" in df_preds.columns else [])
     df_preds = (
         df_preds.join(pd.concat(preds, axis=1)).melt(
-            id_vars=[age_var, "gender", "region"], var_name="gene", value_name="pred"
+            id_vars=id_vars, var_name="gene", value_name="pred"
         )
         # Add gene predictions normalised to 75th quantile
         .assign(
-            pred_q75=lambda x: x.groupby(["gene", "gender", "region"])
+            pred_q75=lambda x: x.groupby(id_vars)
             .apply(lambda y: y["pred"] / np.quantile(y["pred"], 0.75))
             .reset_index([0, 1, 2], drop=True)
         )
         # .assign(age = lambda x: (10**x['age_log10']-40*7)/365)
     )
+
     return df_preds, df_data
 
 
@@ -262,13 +318,13 @@ def get_age_groups():
     return age_groups
 
 
-def get_mapped_scores(version, version_to_bs_mapping, mean=True):
+def get_mapped_scores(version, version_to_bs_mapping, mean=True, n_components=4):
     """
     Get gradient scores in mapped Brainspan regions
     """
     # Get gradients filtered to HCP regions matched in brainspan
     scores_filtered = (
-        version.clean_scores()
+        version.clean_scores(n_components=n_components)
         .set_index("label")
         .join(version_to_bs_mapping.set_index("label")["structure_name"])
         .dropna(axis=0)
@@ -359,7 +415,7 @@ def aggregate_brainspan_by_age(bs_clean, normalize=True):
     return bs_agg
 
 
-def compute_brainspan_scores(bs_agg, version, normalize=True):
+def compute_brainspan_scores(bs_agg, version, normalize=True, n_components=3):
     """
     Compute scores of AHBA gradients on donor-aggregated Brainspan
     Add in missing NA rows
@@ -370,7 +426,7 @@ def compute_brainspan_scores(bs_agg, version, normalize=True):
 
     # Score PCs
     bs_scores = (bs_agg.loc[:, gene_mask] @ version.weights.loc[gene_mask, :]).iloc[
-        :, :3
+        :, :n_components
     ]
 
     # Add missing regions to each age as NA
@@ -391,7 +447,11 @@ def compute_brainspan_scores(bs_agg, version, normalize=True):
 
 
 def correlate_brainspan_scores(
-    bs_scores, ahba_scores, age_groups=None, rolling=None, plot=True
+    bs_scores,
+    ahba_scores,
+    age_groups=None,
+    rolling=None,
+    plot=True,
 ):
     """
     Correlate Brainspan gradient scores with HCP gradient scores
@@ -399,25 +459,47 @@ def correlate_brainspan_scores(
     Either by all ages, or in defined age groups
     Optionally melt for plotting
     """
-    # Aggregate into age groups if desired
+
+    def _reset_index_safe(df):
+        out = df
+        raw_names = list(out.index.names)
+        seen = {}
+        unique_names = []
+        for i, name in enumerate(raw_names):
+            base = name if name is not None else f"level_{i}"
+            count = seen.get(base, 0)
+            unique_names.append(base if count == 0 else f"{base}_{count}")
+            seen[base] = count + 1
+        if unique_names != raw_names:
+            out = out.copy()
+            out.index = out.index.set_names(unique_names)
+
+        index_names = [name for name in out.index.names if name is not None]
+        duplicate_names = [name for name in index_names if name in out.columns]
+        if not duplicate_names:
+            return out.reset_index()
+
+        keep_levels = [name for name in index_names if name not in duplicate_names]
+        if keep_levels:
+            return out.reset_index(level=keep_levels)
+        return out.copy()
+
     if age_groups is not None:
         bs_scores = (
-            bs_scores.reset_index()
-            .assign(age_group=lambda x: x["age"].map(age_groups))
+            _reset_index_safe(bs_scores)
+            .assign(age=lambda x: x["age"].map(age_groups))
             .assign(
                 age=lambda x: pd.Categorical(
-                    x["age_group"], ordered=True, categories=x["age_group"].unique()
+                    x["age"], ordered=True, categories=x["age"].unique()
                 )
             )
-            .drop("age_group", axis=1)
-            .groupby(["age", "structure_name"])
-            .mean()  # agg into age groups
+            .groupby(["age", "structure_name"], observed=True)
+            .mean(numeric_only=True)
         )
 
-    # Rolling average over ages if desired
     if rolling is not None:
         bs_scores = (
-            bs_scores.reset_index()
+            _reset_index_safe(bs_scores)
             .groupby(["structure_name"])
             .rolling(rolling, center=False, on="age", min_periods=1)
             .mean()
@@ -425,16 +507,40 @@ def correlate_brainspan_scores(
             .droplevel(level=1)
         )
 
-    # Correlate
-    # Take absolute because PLS may invert
-    bs_scores_corr = (
-        bs_scores.groupby("age").corrwith(ahba_scores).abs()  # take absolute
-    )
-    # Clean up for plotting
+    bs_scores = _reset_index_safe(bs_scores)
+
+    ahba_scores = ahba_scores.copy()
+    if ahba_scores.index.name != "structure_name":
+        ahba_scores.index = ahba_scores.index.rename("structure_name")
+
+    summary_rows = []
+
+    for age_name, age_df in bs_scores.groupby("age", observed=True):
+        age_df = age_df.dropna(subset=["structure_name"]).set_index("structure_name")
+        age_ahba = ahba_scores.loc[age_df.index.intersection(ahba_scores.index)]
+        age_bs = age_df.loc[age_ahba.index]
+
+        for comp in [column for column in age_bs.columns if column in age_ahba.columns]:
+            paired = pd.concat(
+                [age_bs[comp].rename("bs"), age_ahba[comp].rename("ahba")], axis=1
+            ).dropna()
+            observed = abs(paired["bs"].corr(paired["ahba"]))
+            sem = (1 - observed**2) / np.sqrt(len(paired) - 3)
+
+            summary_rows.append(
+                {
+                    "age": age_name,
+                    "C": comp,
+                    "corr": observed,
+                    "sem": sem,
+                }
+            )
+
+    bs_scores_corr = pd.DataFrame(summary_rows)
+
     if plot:
-        bs_scores_corr = bs_scores_corr.melt(
-            var_name="C", value_name="corr", ignore_index=False
-        ).reset_index()
+        bs_scores_corr = bs_scores_corr.sort_values(["age", "C"]).reset_index(drop=True)
+
     return bs_scores_corr
 
 

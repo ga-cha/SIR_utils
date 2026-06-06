@@ -3,6 +3,7 @@
 """
 Version class for analyzing gradients of AHBA
 """
+
 import numpy as np, pandas as pd
 from sklearn.decomposition import PCA
 from sklearn.cross_decomposition import PLSCanonical, PLSRegression
@@ -11,6 +12,8 @@ import brainspace
 from brainsmash.mapgen.base import Base
 from neuromaps.images import annot_to_gifti
 from neuromaps.nulls.spins import parcels_to_vertices, vertices_to_parcels
+
+from processing import get_labels_hcp, get_labels_s100ts2
 
 
 ### Monkey Patch compute_affinity function to not zero-out negative values
@@ -41,8 +44,9 @@ class gradientVersion:
         n_components=5,
         sparsity=0,
         kernel=None,
-        #  marker_genes=['NEFL', 'LGALS1', 'SYT6'],
-        marker_genes=["NEFL", "LGALS1", "RFTN1"],
+        # marker_genes=['NEFL', 'LGALS1', 'SYT6'], # Dear 2024
+        marker_genes=["PKDCC", "IFT22", "SIPA1L1"],  # aligned with components
+        # marker_genes=[],
         random_state=0,
         **kwargs,
     ):
@@ -105,9 +109,12 @@ class gradientVersion:
         scores = pd.DataFrame(self.gradients.gradients_, index=X.index)
         for i, marker in enumerate(self.marker_genes):
             if marker in self.expression.columns:
+                print(f"Aligning gradient {i+1} to marker gene {marker}...")
                 r_ = X.loc[:, marker].corr(scores.loc[:, i])
                 if r_ < 0:
                     scores.loc[:, i] *= -1
+            else:
+                print(f"Marker gene {marker} not found in expression data")
 
         self.scores = scores
         self.affinity = compute_affinity_new(
@@ -128,15 +135,18 @@ class gradientVersion:
         """
         Normalize C1-3 scores, add labels
         """
+        # Local import avoids stale global symbol issues in notebook autoreload workflows.
+        from processing import get_labels_hcp, get_labels_s100ts2
+
+        print(type(scores), scores.shape if hasattr(scores, "shape") else None)
         if scores is None:
             scores = self.scores
 
-        if scores.shape[0] >= 120:
+        print(type(scores), scores.shape if hasattr(scores, "shape") else None)
+        if scores.shape[0] >= 67:
             labels = get_labels_hcp()
-        elif scores.shape[0] <= 34:
-            labels = get_labels_dk()
         else:
-            labels = get_labels_dx().drop_duplicates()
+            labels = get_labels_s100ts2().drop_duplicates()
 
         scores = (
             scores.iloc[:, :n_components]
