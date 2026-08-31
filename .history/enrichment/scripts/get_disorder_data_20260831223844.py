@@ -1,4 +1,5 @@
 import pandas as pd
+import mygene
 
 replace_dict = {
     "01-Mar": "MARCH1",
@@ -30,6 +31,15 @@ replace_dict = {
     "01-Dec": "DECR1",
     "02-Dec": "DECR2",
 }
+
+
+def ensembl_id_to_gene_symbol(ensembl_ids):
+    mg = mygene.MyGeneInfo()
+    ensembl_ids = [ens.split(".")[0] for ens in ensembl_ids]
+    matches = mg.querymany(ensembl_ids, scopes="ensembl.gene", as_dataframe=True)[
+        "symbol"
+    ]
+    return matches
 
 
 def get_deg_combined():
@@ -100,9 +110,31 @@ def get_gwas_combined():
         .rename("gene")
         .reset_index(drop=True)
     )
+
+    # ASD data from https://www.nature.com/articles/s41398-020-00953-9#MOESM1
+    matoba = (
+        pd.read_csv(f"../data/gwas/matoba2020_tableS7.csv")
+        .loc[lambda x: x["FDR"] <= 0.05, :]
+        #   .loc[:, 'hgnc_symbol'].rename('gene')
+        .loc[:, "GENE"]
+        .pipe(ensembl_id_to_gene_symbol)
+        .rename("gene")
+        .reset_index(drop=True)
+    )
+
+    # MDD data from https://www.nature.com/articles/s41593-018-0326-7#MOESM11
+    howard = (
+        pd.read_csv(f"../data/gwas/howard2019_tableS9.csv", header=1)
+        .loc[:, "Gene Name"]
+        .rename("gene")
+    )
+
     gwas_dict = {
+        "ASD": matoba,
+        "MDD": howard,
         "SCZ": trubetskoy,
     }
+
     df = (
         pd.concat(gwas_dict)
         .reset_index(0)

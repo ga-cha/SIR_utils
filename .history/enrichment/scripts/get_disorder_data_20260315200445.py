@@ -115,33 +115,3 @@ def get_gwas_combined():
         .dropna()
     )
     return df
-
-
-# SCZ specific
-# def get_gwas_combined():
-#     # SCZ data from https://figshare.com/articles/dataset/scz2022/19426775?file=35775617
-#     trubetskoy = (
-#         pd.read_csv(f"../data/gwas/trubetskoy2022_extended.csv")
-#         .loc[lambda x: x["Extended.GWAS"] == "YES", "Symbol.ID"]
-#         #   .rename('gene')
-#         #   .loc[lambda x: x["Prioritised"]==1, :]
-#         #   .loc[lambda x: x["Extended.GWAS"]=='YES', 'Ensembl.ID']
-#         #   .pipe(ensembl_id_to_gene_symbol)
-#         .rename("gene")
-#         .reset_index(drop=True)
-#     )
-#     gwas_dict = {
-#         "SCZ": trubetskoy,
-#     }
-#     df = (
-#         pd.concat(gwas_dict)
-#         .reset_index(0)
-#         .rename({"level_0": "label"}, axis=1)
-#         .assign(
-#             gene=lambda x: x["gene"].str.replace("\\..*", "", regex=True)
-#         )  # drop variants
-#         .replace({"gene": replace_dict})
-#         .drop_duplicates()
-#         .dropna()
-#     )
-#     return df
