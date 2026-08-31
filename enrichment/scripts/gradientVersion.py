@@ -45,7 +45,12 @@ class gradientVersion:
         sparsity=0,
         kernel=None,
         # marker_genes=['NEFL', 'LGALS1', 'SYT6'], # Dear 2024
-        marker_genes=["PKDCC", "IFT22", "SIPA1L1"],  # aligned with components
+        # aligned with components
+        marker_genes=["SH3GL2", "IFT22", "SIPA1L1", "TRPC4", "TCAP"],
+        # aligned with DEGs
+        # marker_genes=["ETS2", "ANKRD6", "PASK", "TRPC4"],
+        # aligned with GWAS genes
+        # marker_genes=["C12orf43", "SPPL3", "ACE", "TRPC4"],
         # marker_genes=[],
         random_state=0,
         **kwargs,

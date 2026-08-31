@@ -45,18 +45,26 @@ def find_aliases(gene_df: pd.DataFrame, query: str = "abagen symbol") -> pd.Data
     return gene_df
 
 
-def pool_genes(gene_df: pd.DataFrame, gene_type: str) -> pd.DataFrame:
+def pool_genes(
+    gene_df: pd.DataFrame, gene_type: str, normalise: bool = False
+) -> pd.DataFrame:
     """
     Pools gene_df for each gene in gene_type
     gene_type should be either 'risk gene' or 'clearance gene'
     """
+    # gene_df = gene_df.copy()
+    # gene_df.loc[gene_df["pass_all"] == 0, "correlation"] = 0
 
-    def get_corr(group):
-        # group["correlation"] = group["correlation"] * group["pass_all"]
+    def get_corr(group, method: Optional[str] = "max"):
         group.loc[group["correlation"] == 0, "correlation"] = np.nan
-        group["correlation"] = np.arctanh(group["correlation"])  # Fisher z-transform
-        mean = group["correlation"].mean()
-        return mean if not np.isnan(mean) else 0
+        # group["correlation"] = np.arctanh(group["correlation"])  # Fisher z-transform
+        if method == "mean":
+            group_corr = group["correlation"].mean()
+        elif method == "max":
+            group_corr = group["correlation"].max()
+        else:
+            raise ValueError("method must be either 'mean' or 'max'")
+        return group_corr if not np.isnan(group_corr) else 0
 
     def get_seed(group):
         if group["correlation"].isna().all():
@@ -64,7 +72,7 @@ def pool_genes(gene_df: pd.DataFrame, gene_type: str) -> pd.DataFrame:
         else:
             return group.loc[group["correlation"].idxmax(), "seed"]
 
-    def normalise(data):
+    def minmax_normalise(data):
         return (data - data.min()) / (data.max() - data.min())
 
     pooled_df = (
@@ -74,7 +82,7 @@ def pool_genes(gene_df: pd.DataFrame, gene_type: str) -> pd.DataFrame:
                 {
                     "pass_all": group["pass_all"].any().astype(int),
                     "num_pass": group["pass_all"].sum(),
-                    "correlation": get_corr(group),
+                    "correlation": get_corr(group, method="mean"),
                     "seed": get_seed(group),
                 }
             ),
@@ -83,15 +91,16 @@ def pool_genes(gene_df: pd.DataFrame, gene_type: str) -> pd.DataFrame:
         .reset_index()
     )
     # reverse fisher z-transform
-    pooled_df["correlation"] = np.tanh(pooled_df["correlation"])
+    # pooled_df["correlation"] = np.tanh(pooled_df["correlation"])
 
-    # normalise data between 0 and 1
-    pooled_df.loc[pooled_df["correlation"] != 0, "correlation"] = normalise(
-        pooled_df.loc[pooled_df["correlation"] != 0, "correlation"]
+    if normalise:
+        pooled_df.loc[pooled_df["correlation"] != 0, "correlation"] = minmax_normalise(
+            pooled_df.loc[pooled_df["correlation"] != 0, "correlation"]
+        )
+
+    pooled_df["score"] = pooled_df["correlation"] * minmax_normalise(
+        pooled_df["num_pass"]
     )
-    pooled_df["num_pass"] = normalise(pooled_df["num_pass"])
-
-    pooled_df["score"] = pooled_df["correlation"] * pooled_df["num_pass"]
     pooled_df.rename(columns={gene_type: "abagen symbol"}, inplace=True)
     return pooled_df
 
